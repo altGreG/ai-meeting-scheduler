@@ -1,10 +1,12 @@
 # Python environment configuration
 
 ## Create and enter virtual environment
+```bash
 pip install virtualenv 
 python -m venv env
-
+# enter created virtual environment
 env\Scripts\activate
+```
 
 ## Download software needed for creawai
 1. Go to: https://visualstudio.microsoft.com/visual-cpp-build-tools/
@@ -14,6 +16,7 @@ env\Scripts\activate
     - Windows 11 SDK(10.0.ver_nr.0)
 
 ## Download Python dependencies
+```bash
 pip install crewai crewai-tools
 pip install google-auth google-auth-oauthlib google-api-python-client
-
+```
