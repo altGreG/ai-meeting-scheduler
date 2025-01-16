@@ -39,3 +39,12 @@ main.py	        Project entry point and execution flow
 crew.py	        Crew orchestration and coordination
 tools/	        Directory for custom agent tools
 ```
+### Running crewai project
+
+```
+cd organize_meeting
+.\.venv\Scripts\activate
+crewai install
+
+crewai run
+```
