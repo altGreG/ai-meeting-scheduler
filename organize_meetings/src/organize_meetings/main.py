@@ -1,61 +1,72 @@
-#!/usr/bin/env python
-import sys
-import warnings
+import yaml
+import json
+from organize_meetings.crew import InvitationAgent, SchedulerAgent, ConfirmationAgent, NegotiationAgent
 
-from organize_meetings.crew import OrganizeMeetings
+# Load configurations from YAML files
+def load_yaml(file_path):
+    with open(file_path, "r") as f:
+        return yaml.safe_load(f)
 
-warnings.filterwarnings("ignore", category=SyntaxWarning, module="pysbd")
+# Save output data to JSON file
+def save_to_file(file_path, data):
+    with open(file_path, "w") as f:
+        json.dump(data, f, indent=4)
 
-# This main file is intended to be a way for you to run your
-# crew locally, so refrain from adding unnecessary logic into this file.
-# Replace with inputs you want to test with, it will automatically
-# interpolate any tasks and agents information
+# Main function to execute the task workflow
+def main():
+    # Load agents and tasks configurations
+    agents_config = load_yaml("agents.yaml")
+    tasks_config = load_yaml("tasks.yaml")
 
-def run():
-    """
-    Run the crew.
-    """
-    inputs = {
-        'topic': 'AI LLMs',
-        'guest_name': 'Michael Jackson'
+    # Initialize agents
+    agents = {
+        "InvitationAgent": InvitationAgent(),
+        "SchedulerAgent": SchedulerAgent(),
+        "ConfirmationAgent": ConfirmationAgent(),
+        "NegotiationAgent": NegotiationAgent(),
     }
-    OrganizeMeetings().crew().kickoff(inputs=inputs)
 
+    # Sample input data
+    friends_list = [
+        {"name": "Alice", "email": "alice@example.com"},
+        {"name": "Bob", "email": "bob@example.com"},
+        {"name": "Charlie", "email": "charlie@example.com"},
+    ]
+    invitation_template = (
+        "Hi {name},\n\nI’m organizing a party! Could you let me know your availability?\n"
+        "Please include your preferred time, date, and place.\n\nThanks!"
+    )
 
-def train():
-    """
-    Train the crew for a given number of iterations.
-    """
-    inputs = {
-        "topic": "AI LLMs",
-        "guest_name": "Michael Jackson"
+    # Context for passing inputs and outputs between tasks
+    context = {
+        "friends_list": friends_list,
+        "invitation_template": invitation_template,
     }
-    try:
-        OrganizeMeetings().crew().train(n_iterations=int(sys.argv[1]), filename=sys.argv[2], inputs=inputs)
 
-    except Exception as e:
-        raise Exception(f"An error occurred while training the crew: {e}")
+    # Execute tasks in the defined order
+    for task in tasks_config["tasks"]:
+        task_name = task["name"]
+        agent_name = task["agent"]
+        agent = agents[agent_name]
+        print(f"Executing task: {task_name} with agent: {agent_name}")
 
-def replay():
-    """
-    Replay the crew execution from a specific task.
-    """
-    try:
-        OrganizeMeetings().crew().replay(task_id=sys.argv[1])
+        # Gather inputs for the task
+        inputs = {key: context[key] for key in task.get("inputs", [])}
 
-    except Exception as e:
-        raise Exception(f"An error occurred while replaying the crew: {e}")
+        # Run the agent
+        output = agent.run(**inputs)
 
-def test():
-    """
-    Test the crew execution and returns the results.
-    """
-    inputs = {
-        "topic": "AI LLMs",
-        "guest_name": "Michael Jackson"
-    }
-    try:
-        OrganizeMeetings().crew().test(n_iterations=int(sys.argv[1]), openai_model_name=sys.argv[2], inputs=inputs)
+        # Save outputs to context
+        output_key = task.get("expected_output", "output")
+        context[output_key] = output
 
-    except Exception as e:
-        raise Exception(f"An error occurred while replaying the crew: {e}")
+        # Save output to file if specified
+        if "output_file" in task:
+            save_to_file(task["output_file"], output)
+            print(f"Saved output of {task_name} to {task['output_file']}")
+
+    # Finalize workflow
+    print("All tasks completed. Party planning is done!")
+
+if __name__ == "__main__":
+    main()

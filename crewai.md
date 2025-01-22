@@ -48,3 +48,7 @@ crewai install
 
 crewai run
 ```
+
+### Agents
+
+- emails_creator: create invitation to party for guests

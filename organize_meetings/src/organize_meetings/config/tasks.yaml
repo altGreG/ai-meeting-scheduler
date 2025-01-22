@@ -1,27 +1,35 @@
-create_invite_task:
-  description: >
-    Create text for email in which you invite a {guest_name} to drink a beer. 
-    Ask invited guest about date, time and place in which he would like to meet.
-    On top of text create title for email.
-  expected_output: >
-    Text with a content for email. On top, email title should be placed.
-  agent: emails_creator
-  output_file: invitation.txt
+tasks:
+  - name: SendInvitations
+    description: Send party invitations to friends and ask for their availability (time, date, and place preferences).
+    expected_output: A list of responses from invitees, including their availability details.
+    agent: InvitationAgent
+    inputs:
+      - friends_list
+      - invitation_template
+    output_file: responses.json  # Stores collected responses for later use.
 
-# research_task:
-#   description: >
-#     Conduct a thorough research about {topic}
-#     Make sure you find any interesting and relevant information given
-#     the current year is 2024.
-#   expected_output: >
-#     A list with 10 bullet points of the most relevant information about {topic}
-#   agent: researcher
+  - name: DetermineSchedule
+    description: Analyze responses from invitees to determine the optimal time, date, and place for the party.
+    expected_output: A proposed schedule with the best time, date, and place based on collective preferences.
+    agent: SchedulerAgent
+    inputs:
+      - responses
+    output_file: proposed_schedule.json  # Stores the proposed schedule.
 
-# reporting_task:
-#   description: >
-#     Review the context you got and expand each topic into a full section for a report.
-#     Make sure the report is detailed and contains any and all relevant information.
-#   expected_output: >
-#     A fully fledged report with the main topics, each with a full section of information.
-#     Formatted as markdown without '```'
-#   agent: reporting_analyst
+  - name: SendConfirmations
+    description: Share the proposed schedule with invitees and collect their confirmations.
+    expected_output: A list of confirmations indicating whether invitees agree with the schedule.
+    agent: ConfirmationAgent
+    inputs:
+      - friends_list
+      - proposed_schedule
+    output_file: confirmations.json  # Stores confirmations for review.
+
+  - name: RenegotiateSchedule
+    description: Resolve any disagreements regarding the proposed schedule by collecting updated preferences.
+    expected_output: An updated schedule that works for all invitees.
+    agent: NegotiationAgent
+    inputs:
+      - confirmations
+      - proposed_schedule
+    output_file: final_schedule.json  # Stores the final, agreed-upon schedule.

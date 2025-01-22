@@ -1,90 +1,139 @@
-from crewai import Agent, Crew, Process, Task
-from crewai.project import CrewBase, agent, crew, task, before_kickoff, after_kickoff
+import json
+import time
+from organize_meetings.email_handler import EmailHandler
 
-# If you want to run a snippet of code before or after the crew starts, 
-# you can use the @before_kickoff and @after_kickoff decorators
-# https://docs.crewai.com/concepts/crews#example-crew-class-with-decorators
+# Initialize EmailHandler for sending and receiving emails
+email_handler = EmailHandler()
 
-@CrewBase
-class OrganizeMeetings():
-	"""OrganizeMeetings crew"""
+class InvitationAgent:
+    """
+    Agent responsible for sending party invitations and collecting availability responses.
+    """
+    def run(self, friends_list, invitation_template):
+        responses = []
+        for friend in friends_list:
+            email = friend["email"]
+            name = friend["name"]
+            message = invitation_template.format(name=name)
+            print(f"Sending invitation to {name} at {email}...")
+            email_handler.send_email(email, "Party Invitation", message)
+            print(f"Waiting for reply from {name}...")
+            response = email_handler.wait_for_reply(email)
+            responses.append({"email": email, "response": response})
+        print("All invitations sent, and responses collected.")
+        return responses
 
-	
-	@before_kickoff
-	def before_kickoff_function(self, inputs):
-		print(f"Before kickoff function with inputs: {inputs}")
-		return inputs # You can return the inputs or modify them as needed
 
-	# Learn more about YAML configuration files here:
-	# Agents: https://docs.crewai.com/concepts/agents#yaml-configuration-recommended
-	# Tasks: https://docs.crewai.com/concepts/tasks#yaml-configuration-recommended
-	agents_config = 'config/agents.yaml'
-	tasks_config = 'config/tasks.yaml'
+class SchedulerAgent:
+    """
+    Agent responsible for analyzing responses and determining the best schedule.
+    """
+    def run(self, responses):
+        availability = []
+        for response in responses:
+            email = response["email"]
+            reply = response["response"]
+            details = self.parse_availability(reply)
+            availability.append({"email": email, "details": details})
+        best_schedule = self.determine_best_schedule(availability)
+        print(f"Proposed schedule determined: {best_schedule}")
+        return best_schedule
 
-	# If you would like to add tools to your agents, you can learn more about it here:
-	# https://docs.crewai.com/concepts/agents#agent-tools
+    def parse_availability(self, reply):
+        """
+        Parse the response email to extract availability details.
+        Expected format: JSON with keys 'times', 'dates', and 'places'.
+        """
+        try:
+            return json.loads(reply)
+        except json.JSONDecodeError:
+            print(f"Invalid response format: {reply}")
+            return {"times": [], "dates": [], "places": []}
 
-	@agent
-	def emails_creator(self) -> Agent:
-		return Agent(
-			config=self.agents_config['emails_creator'],
-			verbose=True,
-			max_rpm = 1
-		)
+    def determine_best_schedule(self, availability):
+        """
+        Determine the most suitable time, date, and place based on preferences.
+        """
+        times, dates, places = {}, {}, {}
 
-	# @agent
-	# def researcher(self) -> Agent:
-	# 	return Agent(
-	# 		config=self.agents_config['researcher'],
-	# 		verbose=True
-	# 	)
+        for avail in availability:
+            details = avail["details"]
+            for time in details.get("times", []):
+                times[time] = times.get(time, 0) + 1
+            for date in details.get("dates", []):
+                dates[date] = dates.get(date, 0) + 1
+            for place in details.get("places", []):
+                places[place] = places.get(place, 0) + 1
 
-	# @agent
-	# def reporting_analyst(self) -> Agent:
-	# 	return Agent(
-	# 		config=self.agents_config['reporting_analyst'],
-	# 		verbose=True
-	# 	)
+        return {
+            "time": max(times, key=times.get, default=""),
+            "date": max(dates, key=dates.get, default=""),
+            "place": max(places, key=places.get, default=""),
+        }
 
-	# To learn more about structured task outputs, 
-	# task dependencies, and task callbacks, check out the documentation:
-	# https://docs.crewai.com/concepts/tasks#overview-of-a-task
 
-	@task
-	def create_invite_task(self) -> Task:
-		return Task(
-			config=self.tasks_config['create_invite_task'],
-			output_file='output/invitation.txt'
-		)
+class ConfirmationAgent:
+    """
+    Agent responsible for sending the proposed schedule for confirmation and collecting responses.
+    """
+    def run(self, friends_list, proposed_schedule):
+        confirmations = []
+        for friend in friends_list:
+            email = friend["email"]
+            name = friend["name"]
+            message = (
+                f"Hi {name},\n\nWe propose the following schedule for the party:\n"
+                f"Date: {proposed_schedule['date']}\n"
+                f"Time: {proposed_schedule['time']}\n"
+                f"Place: {proposed_schedule['place']}\n\n"
+                "Please confirm if this works for you by replying to this email."
+            )
+            print(f"Sending schedule confirmation to {name} at {email}...")
+            email_handler.send_email(email, "Party Confirmation", message)
+            print(f"Waiting for confirmation from {name}...")
+            response = email_handler.wait_for_reply(email)
+            confirmations.append({"email": email, "response": response})
+        print("All confirmations collected.")
+        return confirmations
 
-	# @task
-	# def research_task(self) -> Task:
-	# 	return Task(
-	# 		config=self.tasks_config['research_task'],
-	# 	)
 
-	# @task
-	# def reporting_task(self) -> Task:
-	# 	return Task(
-	# 		config=self.tasks_config['reporting_task'],
-	# 		output_file='report.md'
-	# 	)
+class NegotiationAgent:
+    """
+    Agent responsible for renegotiating the schedule if necessary.
+    """
+    def run(self, confirmations, proposed_schedule):
+        disagreements = [
+            c for c in confirmations if not self.is_agreeable(c["response"])
+        ]
+        if disagreements:
+            print("Disagreements found. Initiating renegotiation...")
+            updated_availability = []
+            for disagree in disagreements:
+                email = disagree["email"]
+                name = email.split("@")[0].capitalize()
+                print(f"Renegotiating with {name}...")
+                email_handler.send_email(
+                    email,
+                    "Schedule Renegotiation",
+                    "It seems the proposed schedule doesn’t work for you. "
+                    "Could you suggest alternative options? Please reply with your preferences."
+                )
+                reply = email_handler.wait_for_reply(email)
+                updated_availability.append(SchedulerAgent().parse_availability(reply))
+            print("Updated availability collected. Recalculating schedule...")
+            updated_schedule = SchedulerAgent().determine_best_schedule(updated_availability)
+            print(f"Updated schedule: {updated_schedule}")
+            return updated_schedule
+        else:
+            print("All invitees agree with the proposed schedule.")
+            return proposed_schedule
 
-	@after_kickoff
-	def after_kickoff_function(self, result):
-		print(f"After kickoff function with result: {result}")
-		return result # You can return the result or modify it as needed
-
-	@crew
-	def crew(self) -> Crew:
-		"""Creates the OrganizeMeetings crew"""
-		# To learn how to add knowledge sources to your crew, check out the documentation:
-		# https://docs.crewai.com/concepts/knowledge#what-is-knowledge
-
-		return Crew(
-			agents=self.agents, # Automatically created by the @agent decorator
-			tasks=self.tasks, # Automatically created by the @task decorator
-			process=Process.sequential,
-			verbose=True,
-			# process=Process.hierarchical, # In case you wanna use that instead https://docs.crewai.com/how-to/Hierarchical/
-		)
+    def is_agreeable(self, response):
+        """
+        Determine if the response indicates agreement with the schedule.
+        """
+        try:
+            return json.loads(response).get("agree", False)
+        except json.JSONDecodeError:
+            print(f"Invalid response format: {response}")
+            return False
